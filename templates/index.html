@@ -91,6 +91,35 @@
 
         <div class="row">
             <div class="col-md-6">
+                <div class="card mb-3">
+                    <div class="card-header bg-info text-white">
+                        <h5 class="mb-0"><i class="bi bi-sliders"></i> Текущие настройки системы</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-6">
+                                <small class="text-muted">Модель LLM:</small>
+                                <div class="fw-bold">{{ settings.llm_model }}</div>
+                            </div>
+                            <div class="col-6">
+                                <small class="text-muted">Temperature:</small>
+                                <div class="fw-bold">{{ settings.llm_temperature }}</div>
+                            </div>
+                        </div>
+                        <hr class="my-2">
+                        <div class="row">
+                            <div class="col-6">
+                                <small class="text-muted">Порог схожести:</small>
+                                <div class="fw-bold">{{ settings.similarity_threshold }}</div>
+                            </div>
+                            <div class="col-6">
+                                <small class="text-muted">API Endpoint:</small>
+                                <div class="fw-bold small">{{ settings.openai_api_base }}</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
                 <div class="card">
                     <div class="card-header bg-primary text-white">
                         <h5 class="mb-0"><i class="bi bi-gear"></i> Настройки обработки</h5>
@@ -109,6 +138,32 @@
                                     placeholder="новости о технологиях и искусственном интеллекте" required>
                                 <small class="form-text text-muted">Опишите критерий релевантности новостей</small>
                             </div>
+                            
+                            <hr>
+                            <h6 class="mb-3"><i class="bi bi-sliders"></i> Дополнительные настройки</h6>
+                            
+                            <div class="row mb-3">
+                                <div class="col-md-6">
+                                    <label for="llm_model" class="form-label">Модель LLM</label>
+                                    <input type="text" class="form-control" id="llm_model" 
+                                        value="{{ settings.llm_model }}" placeholder="gpt-4o-mini">
+                                    <small class="form-text text-muted">Модель для классификации</small>
+                                </div>
+                                <div class="col-md-6">
+                                    <label for="llm_temperature" class="form-label">Temperature</label>
+                                    <input type="number" class="form-control" id="llm_temperature" 
+                                        value="{{ settings.llm_temperature }}" step="0.1" min="0" max="2">
+                                    <small class="form-text text-muted">Температура LLM (0.0-2.0)</small>
+                                </div>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label for="similarity_threshold" class="form-label">Порог схожести для дедупликации</label>
+                                <input type="number" class="form-control" id="similarity_threshold" 
+                                    value="{{ settings.similarity_threshold }}" step="0.01" min="0" max="1">
+                                <small class="form-text text-muted">Порог для определения дубликатов (0.0-1.0)</small>
+                            </div>
+                            
                             <button type="submit" class="btn btn-primary w-100 mb-2" id="startBtn">
                                 <i class="bi bi-play-circle"></i> Начать обработку
                             </button>
@@ -243,9 +298,23 @@
             
             const rssFeeds = document.getElementById('rss_feeds').value;
             const criteria = document.getElementById('criteria').value;
+            const llmModel = document.getElementById('llm_model').value.trim();
+            const llmTemperature = parseFloat(document.getElementById('llm_temperature').value);
+            const similarityThreshold = parseFloat(document.getElementById('similarity_threshold').value);
 
             if (!rssFeeds.trim() || !criteria.trim()) {
-                alert('Заполните все поля');
+                alert('Заполните обязательные поля: RSS каналы и критерий отбора');
+                return;
+            }
+
+            // Валидация параметров
+            if (isNaN(llmTemperature) || llmTemperature < 0 || llmTemperature > 2) {
+                alert('Temperature должен быть числом от 0.0 до 2.0');
+                return;
+            }
+
+            if (isNaN(similarityThreshold) || similarityThreshold < 0 || similarityThreshold > 1) {
+                alert('Порог схожести должен быть числом от 0.0 до 1.0');
                 return;
             }
 
@@ -260,7 +329,10 @@
                     },
                     body: JSON.stringify({
                         rss_feeds: rssFeeds,
-                        criteria: criteria
+                        criteria: criteria,
+                        llm_model: llmModel,
+                        llm_temperature: llmTemperature,
+                        similarity_threshold: similarityThreshold
                     })
                 });
 

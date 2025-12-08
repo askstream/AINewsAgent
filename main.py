@@ -7,7 +7,18 @@ import sys
 def main():
     """Основная функция"""
     print("=== CrewAI News Agent ===")
-    print(f"Модель LLM: {Config.LLM_MODEL}")
+    print()
+    print("Настройки LLM:")
+    print(f"  Модель: {Config.LLM_MODEL}")
+    print(f"  Temperature: {Config.LLM_TEMPERATURE}")
+    if Config.OPENAI_API_BASE:
+        print(f"  API Endpoint: {Config.OPENAI_API_BASE}")
+    else:
+        print(f"  API Endpoint: По умолчанию (OpenAI)")
+    print()
+    print("Настройки обработки:")
+    print(f"  Порог схожести для дедупликации: {Config.SIMILARITY_THRESHOLD}")
+    print()
     
     # Очистка RSS_FEEDS от пустых строк
     rss_feeds = [feed.strip() for feed in Config.RSS_FEEDS if feed.strip()]

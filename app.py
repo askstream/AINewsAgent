@@ -70,14 +70,22 @@ class ProgressTracker:
         }
 
 
-def process_news_with_progress(task_id, feed_urls, criteria):
+def process_news_with_progress(task_id, feed_urls, criteria, llm_model=None, llm_temperature=None, similarity_threshold=None):
     """Обработка новостей с отслеживанием прогресса"""
     tracker = tasks_status[task_id]
+    
+    # Использование переданных параметров или значений по умолчанию
+    if llm_model is None:
+        llm_model = Config.LLM_MODEL
+    if llm_temperature is None:
+        llm_temperature = Config.LLM_TEMPERATURE
+    if similarity_threshold is None:
+        similarity_threshold = Config.SIMILARITY_THRESHOLD
     
     # Импорты в начале функции
     from agents.rss_collector import collect_rss_news
     from agents.deduplicator import find_duplicates, mark_duplicates
-    from agents.classifier import classify_articles
+    from agents.classifier import classify_articles_with_settings
     
     try:
         tracker.status = 'running'
@@ -125,7 +133,7 @@ def process_news_with_progress(task_id, feed_urls, criteria):
         # Шаг 2: Дедупликация
         tracker.update_step(1, 'running', 0, f'Анализ {len(unprocessed_articles)} статей...')
         
-        duplicates = find_duplicates(unprocessed_articles, Config.SIMILARITY_THRESHOLD)
+        duplicates = find_duplicates(unprocessed_articles, similarity_threshold)
         tracker.update_step(1, 'running', 50, f'Найдено {len(duplicates)} дубликатов')
         
         if duplicates:
@@ -152,11 +160,12 @@ def process_news_with_progress(task_id, feed_urls, criteria):
             return
         
         print(f"Критерий отбора: {criteria}")
+        print(f"Используемые настройки: модель={llm_model}, temperature={llm_temperature}, порог={similarity_threshold}")
         tracker.update_step(2, 'running', 0, f'Классификация {len(unique_articles)} статей по критерию: {criteria[:50]}...')
         
         total = len(unique_articles)
         for i, article in enumerate(unique_articles):
-            classify_articles([article], criteria)
+            classify_articles_with_settings([article], criteria, llm_model, llm_temperature)
             progress = int((i + 1) / total * 100)
             tracker.update_step(2, 'running', progress, f'Обработано {i + 1} из {total} статей')
         
@@ -195,7 +204,14 @@ def process_news_with_progress(task_id, feed_urls, criteria):
 @app.route('/')
 def index():
     """Главная страница с формой"""
-    return render_template('index.html')
+    # Передаем настройки в шаблон
+    settings = {
+        'llm_model': Config.LLM_MODEL,
+        'llm_temperature': Config.LLM_TEMPERATURE,
+        'similarity_threshold': Config.SIMILARITY_THRESHOLD,
+        'openai_api_base': Config.OPENAI_API_BASE if Config.OPENAI_API_BASE else 'По умолчанию (OpenAI)'
+    }
+    return render_template('index.html', settings=settings)
 
 
 @app.route('/api/start', methods=['POST'])

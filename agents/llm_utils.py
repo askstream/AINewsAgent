@@ -4,10 +4,20 @@ from config import Config
 
 
 def create_llm():
-    """Создание LLM с правильной обработкой base_url"""
+    """Создание LLM с правильной обработкой base_url (использует настройки из Config)"""
+    return create_llm_with_settings(Config.LLM_MODEL, Config.LLM_TEMPERATURE)
+
+
+def create_llm_with_settings(llm_model: str = None, llm_temperature: float = None):
+    """Создание LLM с указанными настройками"""
+    if llm_model is None:
+        llm_model = Config.LLM_MODEL
+    if llm_temperature is None:
+        llm_temperature = Config.LLM_TEMPERATURE
+    
     llm_params = {
-        'model': Config.LLM_MODEL,
-        'temperature': Config.LLM_TEMPERATURE,
+        'model': llm_model,
+        'temperature': llm_temperature,
         'api_key': Config.OPENAI_API_KEY
     }
     

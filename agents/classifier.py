@@ -9,8 +9,13 @@ import requests
 import json
 
 
-def classify_with_direct_api(article: NewsArticle, criteria: str) -> dict:
+def classify_with_direct_api(article: NewsArticle, criteria: str, llm_model: str = None, llm_temperature: float = None) -> dict:
     """Классификация через прямой HTTP запрос к API"""
+    if llm_model is None:
+        llm_model = Config.LLM_MODEL
+    if llm_temperature is None:
+        llm_temperature = Config.LLM_TEMPERATURE
+    
     # Формируем URL для запроса
     api_url = Config.OPENAI_API_BASE.rstrip('/')
     if not api_url.endswith('/chat/completions'):
@@ -45,11 +50,11 @@ def classify_with_direct_api(article: NewsArticle, criteria: str) -> dict:
     }
     
     payload = {
-        'model': Config.LLM_MODEL,
+        'model': llm_model,
         'messages': [
             {'role': 'user', 'content': prompt}
         ],
-        'temperature': Config.LLM_TEMPERATURE
+        'temperature': llm_temperature
     }
     
     response = requests.post(api_url, headers=headers, json=payload, timeout=30)
@@ -85,17 +90,27 @@ def classify_with_direct_api(article: NewsArticle, criteria: str) -> dict:
 
 
 def classify_article_relevance(article: NewsArticle, criteria: str) -> dict:
-    """Классификация статьи по релевантности с использованием LLM"""
+    """Классификация статьи по релевантности с использованием LLM (использует настройки из Config)"""
+    return classify_article_relevance_with_settings(article, criteria, Config.LLM_MODEL, Config.LLM_TEMPERATURE)
+
+
+def classify_article_relevance_with_settings(article: NewsArticle, criteria: str, llm_model: str = None, llm_temperature: float = None) -> dict:
+    """Классификация статьи по релевантности с указанными настройками"""
+    if llm_model is None:
+        llm_model = Config.LLM_MODEL
+    if llm_temperature is None:
+        llm_temperature = Config.LLM_TEMPERATURE
+    
     # Сначала пробуем прямой HTTP запрос, если указан кастомный API
     if Config.OPENAI_API_BASE:
         try:
-            return classify_with_direct_api(article, criteria)
+            return classify_with_direct_api(article, criteria, llm_model, llm_temperature)
         except Exception as e:
             print(f"Прямой API запрос не удался: {e}, пробуем через langchain")
     
     # Fallback на langchain
     try:
-        llm = create_llm()
+        llm = create_llm_with_settings(llm_model, llm_temperature)
     except Exception as e:
         print(f"Ошибка при создании LLM: {e}")
         # Fallback на простую классификацию
@@ -124,7 +139,7 @@ def classify_article_relevance(article: NewsArticle, criteria: str) -> dict:
     try:
         # Логирование для отладки
         if Config.OPENAI_API_BASE:
-            print(f"Используется API: {Config.OPENAI_API_BASE}, модель: {Config.LLM_MODEL}")
+            print(f"Используется API: {Config.OPENAI_API_BASE}, модель: {llm_model}, temperature: {llm_temperature}")
         
         response = llm.invoke(prompt)
         # Парсинг ответа (упрощенный вариант)
@@ -220,7 +235,17 @@ def simple_classification(article: NewsArticle, criteria: str) -> dict:
 
 
 def classify_articles(articles: List[NewsArticle], criteria: str):
-    """Классификация списка статей"""
+    """Классификация списка статей (использует настройки из Config)"""
+    classify_articles_with_settings(articles, criteria, Config.LLM_MODEL, Config.LLM_TEMPERATURE)
+
+
+def classify_articles_with_settings(articles: List[NewsArticle], criteria: str, llm_model: str = None, llm_temperature: float = None):
+    """Классификация списка статей с указанными настройками"""
+    if llm_model is None:
+        llm_model = Config.LLM_MODEL
+    if llm_temperature is None:
+        llm_temperature = Config.LLM_TEMPERATURE
+    
     session = get_db_session()
     
     try:
@@ -228,7 +253,7 @@ def classify_articles(articles: List[NewsArticle], criteria: str):
             if article.is_duplicate:
                 continue  # Пропускаем дубликаты
             
-            result = classify_article_relevance(article, criteria)
+            result = classify_article_relevance_with_settings(article, criteria, llm_model, llm_temperature)
             
             article.relevance_score = result['relevance_score']
             article.is_relevant = result['is_relevant']
