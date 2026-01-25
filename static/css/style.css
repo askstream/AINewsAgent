@@ -1,0 +1,100 @@
+.step-card {
+    transition: all 0.3s ease;
+    margin-bottom: 1rem;
+}
+.step-card.active {
+    border-left: 4px solid #0d6efd;
+    background-color: #f8f9fa;
+}
+.step-card.completed {
+    border-left: 4px solid #198754;
+}
+.step-card.error {
+    border-left: 4px solid #dc3545;
+}
+.progress-bar-animated {
+    transition: width 0.3s ease;
+}
+.statistics-card {
+    margin-top: 2rem;
+}
+.alert-success {
+    animation: slideIn 0.5s ease;
+}
+@keyframes slideIn {
+    from {
+        opacity: 0;
+        transform: translateY(-20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+.pulse {
+    animation: pulse 2s infinite;
+}
+@keyframes pulse {
+    0%, 100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.5;
+    }
+}
+.news-row-relevant {
+    background-color: #d4edda !important;
+}
+.news-row-relevant:hover {
+    background-color: #c3e6cb !important;
+}
+.news-article-group {
+    border-top: 2px solid #dee2e6;
+}
+.news-article-group:first-child {
+    border-top: none;
+}
+.news-article-group.news-main-row {
+    border-left: 3px solid transparent;
+}
+.news-article-group.news-relevant.news-main-row {
+    border-left-color: #198754;
+}
+.news-article-group.news-detail-row {
+    border-left: 3px solid transparent;
+    padding-left: 1.5rem !important;
+}
+.news-article-group.news-relevant.news-detail-row {
+    border-left-color: #198754;
+}
+.history-row:hover {
+    background-color: #f8f9fa;
+}
+.history-row.table-active {
+    background-color: #e7f3ff !important;
+}
+.news-content-collapsed {
+    max-height: 7.5em; /* примерно 5 строк */
+    overflow: hidden;
+    position: relative;
+}
+.news-content-collapsed::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 2em;
+    background: linear-gradient(to bottom, transparent, rgba(255, 255, 255, 0.9));
+}
+.news-content-expanded {
+    max-height: none;
+}
+.news-expand-btn {
+    cursor: pointer;
+    user-select: none;
+    font-size: 0.85rem;
+}
+.news-expand-btn:hover {
+    text-decoration: underline;
+}

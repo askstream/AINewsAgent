@@ -94,6 +94,7 @@ def process_news_with_progress(task_id, feed_urls, criteria, llm_model=None, llm
     from agents.rss_collector import collect_rss_news
     from agents.deduplicator import find_duplicates, mark_duplicates
     from agents.classifier import classify_articles_with_settings
+    from models import get_db_session  # Явный импорт для избежания проблем с областью видимости
     import json
     
     search_history_id = None
@@ -353,8 +354,13 @@ def get_results():
             if search_history_id:
                 query = query.filter(NewsArticle.search_history_id == search_history_id)
             
+            # Сортировка: сначала по релевантности, затем по свежести запроса, затем по дате публикации
+            from sqlalchemy import desc, nullslast
             articles = query.order_by(
-                NewsArticle.published_at.desc() if NewsArticle.published_at else NewsArticle.collected_at.desc()
+                desc(NewsArticle.is_relevant),  # Релевантные вверху
+                desc(NewsArticle.search_history_id),  # Свежие запросы вверху
+                nullslast(desc(NewsArticle.published_at)),  # Свежие новости вверху
+                desc(NewsArticle.collected_at)
             ).all()
             
             results = []
@@ -438,11 +444,15 @@ def get_history_articles(history_id):
     try:
         session = get_db_session()
         try:
+            # Сортировка: сначала по релевантности, затем по дате публикации
+            from sqlalchemy import desc, nullslast
             articles = session.query(NewsArticle).filter(
                 NewsArticle.search_history_id == history_id,
                 NewsArticle.is_duplicate == False
             ).order_by(
-                NewsArticle.published_at.desc() if NewsArticle.published_at else NewsArticle.collected_at.desc()
+                desc(NewsArticle.is_relevant),  # Релевантные вверху
+                nullslast(desc(NewsArticle.published_at)),  # Свежие новости вверху
+                desc(NewsArticle.collected_at)
             ).all()
             
             results = []
@@ -530,18 +540,26 @@ def get_statistics():
             
             sources = [{'name': source, 'count': count} for source, count in sources_stats]
             
-            # Последние поиски (по дате сбора)
+            # Последние поиски (по истории запросов) - группируем по search_history_id
             last_searches = session.query(
-                NewsArticle.collected_at,
+                SearchHistory.created_at,
+                SearchHistory.id,
                 func.count(NewsArticle.id).label('count')
-            ).filter(
-                NewsArticle.is_duplicate == False
-            ).group_by(NewsArticle.collected_at).order_by(NewsArticle.collected_at.desc()).limit(10).all()
+            ).outerjoin(
+                NewsArticle, 
+                (SearchHistory.id == NewsArticle.search_history_id) & 
+                (NewsArticle.is_duplicate == False)
+            ).group_by(
+                SearchHistory.id, 
+                SearchHistory.created_at
+            ).order_by(
+                SearchHistory.created_at.desc()
+            ).limit(10).all()
             
             searches = [{
-                'date': collected_at.isoformat() if collected_at else None,
-                'count': count
-            } for collected_at, count in last_searches]
+                'date': created_at.isoformat() if created_at else None,
+                'count': count or 0
+            } for created_at, history_id, count in last_searches]
             
             return jsonify({
                 'total': total,
