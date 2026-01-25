@@ -38,7 +38,8 @@ def collect_rss_news(feed_urls: list) -> list:
                     if hasattr(entry, 'published_parsed') and entry.published_parsed:
                         published_at = datetime(*entry.published_parsed[:6])
                     
-                    # Проверка на существование статьи
+                    # Проверка на существование статьи (по link, без учета search_history_id)
+                    # Одна и та же статья может быть в разных запросах
                     existing = session.query(NewsArticle).filter_by(link=link).first()
                     if existing:
                         continue

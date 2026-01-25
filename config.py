@@ -9,7 +9,7 @@ class Config:
     """Класс конфигурации приложения"""
     
     # База данных
-    DATABASE_URL = os.getenv('DATABASE_URL', 'sqlite:///news_agent.db')
+    DATABASE_URL = os.getenv('DATABASE_URL', 'sqlite:///data/news_agent.db')
     
     # LLM настройки
     OPENAI_API_KEY = os.getenv('OPENAI_API_KEY', '')

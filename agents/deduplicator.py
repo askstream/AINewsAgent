@@ -21,8 +21,8 @@ def calculate_similarity(text1: str, text2: str) -> float:
     return similarity
 
 
-def find_duplicates(articles: List[NewsArticle], threshold: float = None) -> dict:
-    """Поиск дубликатов среди статей"""
+def find_duplicates(articles: List[NewsArticle], threshold: float = None, search_history_id: int = None) -> dict:
+    """Поиск дубликатов среди статей (в рамках одного запроса)"""
     if threshold is None:
         threshold = Config.SIMILARITY_THRESHOLD
     
@@ -30,15 +30,21 @@ def find_duplicates(articles: List[NewsArticle], threshold: float = None) -> dic
     session = get_db_session()
     
     try:
-        # Проверка по хешу (точные дубликаты)
+        # Проверка по хешу (точные дубликаты) - только в рамках одного запроса
         for article in articles:
             if not article.id or not article.content_hash:
                 continue
-                
-            existing = session.query(NewsArticle).filter(
+            
+            query = session.query(NewsArticle).filter(
                 NewsArticle.content_hash == article.content_hash,
                 NewsArticle.id != article.id
-            ).first()
+            )
+            
+            # Если указан search_history_id, ищем дубликаты только в этом запросе
+            if search_history_id:
+                query = query.filter(NewsArticle.search_history_id == search_history_id)
+            
+            existing = query.first()
             
             if existing:
                 duplicates[article.id] = existing.id
