@@ -1,11 +1,8 @@
-"""Агент для сбора новостей из RSS каналов"""
+"""Модуль для сбора новостей из RSS каналов"""
 import feedparser
 from datetime import datetime
-from crewai import Agent
-from langchain_openai import ChatOpenAI
 from config import Config
 from models import NewsArticle, RSSFeed, get_db_session
-from agents.llm_utils import create_llm
 import hashlib
 
 
@@ -64,19 +61,4 @@ def collect_rss_news(feed_urls: list) -> list:
         session.close()
     
     return all_articles
-
-
-def create_rss_collector_agent() -> Agent:
-    """Создание агента для сбора RSS новостей"""
-    llm = create_llm()
-    
-    return Agent(
-        role='RSS Collector',
-        goal='Собрать все новости из указанных RSS каналов и сохранить их в базу данных',
-        backstory='Ты опытный специалист по сбору новостей из различных RSS источников. '
-                 'Ты умеешь эффективно парсить RSS каналы и извлекать актуальную информацию.',
-        verbose=True,
-        allow_delegation=False,
-        llm=llm
-    )
 

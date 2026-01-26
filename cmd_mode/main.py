@@ -6,7 +6,7 @@ import sys
 
 def main():
     """Основная функция"""
-    print("=== CrewAI News Agent ===")
+    print("=== News Agent ===")
     print()
     print("Настройки LLM:")
     print(f"  Модель: {Config.LLM_MODEL}")

@@ -1,9 +1,6 @@
-"""Агент для дедупликации новостей"""
-from crewai import Agent, Task
-from langchain_openai import ChatOpenAI
+"""Модуль для дедупликации новостей"""
 from config import Config
 from models import NewsArticle, get_db_session
-from agents.llm_utils import create_llm
 from typing import List
 import difflib
 
@@ -100,19 +97,4 @@ def mark_duplicates(articles: List[NewsArticle], duplicates: dict):
         print(f"Ошибка при пометке дубликатов: {e}")
     finally:
         session.close()
-
-
-def create_deduplicator_agent() -> Agent:
-    """Создание агента для дедупликации"""
-    llm = create_llm()
-    
-    return Agent(
-        role='News Deduplicator',
-        goal='Найти и пометить дубликаты новостей, оставив только уникальные статьи',
-        backstory='Ты эксперт по анализу текстов и поиску дубликатов. '
-                 'Ты умеешь определять схожие новости даже если они немного отличаются формулировками.',
-        verbose=True,
-        allow_delegation=False,
-        llm=llm
-    )
 

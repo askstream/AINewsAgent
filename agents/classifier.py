@@ -1,10 +1,8 @@
-"""Агент для классификации новостей по релевантности"""
-from crewai import Agent, Task
-from langchain_openai import ChatOpenAI
+"""Модуль для классификации новостей по релевантности"""
 from config import Config
 from models import NewsArticle, get_db_session
 from typing import List
-from agents.llm_utils import create_llm
+from agents.llm_utils import create_llm_with_settings
 import requests
 import json
 
@@ -276,20 +274,4 @@ def classify_articles_with_settings(articles: List[NewsArticle], criteria: str, 
         print(f"Ошибка при классификации: {e}")
     finally:
         session.close()
-
-
-def create_classifier_agent() -> Agent:
-    """Создание агента для классификации"""
-    llm = create_llm()
-    
-    return Agent(
-        role='News Classifier',
-        goal='Классифицировать новости по релевантности к заданному критерию отбора',
-        backstory='Ты опытный аналитик новостей, который умеет определять релевантность '
-                 'статей к заданным критериям. Ты внимательно анализируешь содержание '
-                 'и даешь объективную оценку.',
-        verbose=True,
-        allow_delegation=False,
-        llm=llm
-    )
 
