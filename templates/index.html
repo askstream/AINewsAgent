@@ -31,6 +31,11 @@
                     <i class="bi bi-clock-history"></i> История запросов
                 </button>
             </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="settings-tab" data-bs-toggle="tab" data-bs-target="#settings" type="button" role="tab">
+                    <i class="bi bi-gear"></i> Системные настройки
+                </button>
+            </li>
         </ul>
 
         <div class="tab-content" id="mainTabsContent">
@@ -390,6 +395,50 @@
                                         </tbody>
                                     </table>
                                 </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+            <!-- Вкладка системных настроек -->
+            <div class="tab-pane fade" id="settings" role="tabpanel">
+                <div class="row">
+                    <div class="col-12">
+                        <div class="card">
+                            <div class="card-header bg-secondary text-white">
+                                <h5 class="mb-0"><i class="bi bi-gear"></i> Системные настройки</h5>
+                            </div>
+                            <div class="card-body">
+                                <div id="settingsAlert" class="alert" style="display: none;" role="alert"></div>
+                                
+                                <div class="mb-3">
+                                    <h6>Настройки семантического поиска</h6>
+                                    <p class="text-muted small">Пороги схожести для разных длин запросов. Чем ниже порог, тем больше результатов будет найдено.</p>
+                                </div>
+                                
+                                <form id="settingsForm">
+                                    <div id="settingsContainer">
+                                        <div class="text-center">
+                                            <div class="spinner-border" role="status">
+                                                <span class="visually-hidden">Загрузка...</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="mt-4">
+                                        <button type="submit" class="btn btn-primary">
+                                            <i class="bi bi-save"></i> Сохранить настройки
+                                        </button>
+                                        <button type="button" class="btn btn-secondary" onclick="loadSettings()">
+                                            <i class="bi bi-arrow-clockwise"></i> Сбросить изменения
+                                        </button>
+                                        <button type="button" class="btn btn-warning" onclick="initDefaultSettings()">
+                                            <i class="bi bi-database-add"></i> Инициализировать настройки по умолчанию
+                                        </button>
+                                    </div>
+                                </form>
                             </div>
                         </div>
                     </div>

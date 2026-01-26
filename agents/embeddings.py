@@ -158,7 +158,20 @@ def find_similar_articles(query_embedding: List[float], articles: List[NewsArtic
         if not article.embedding:
             continue
         
-        similarity = cosine_similarity(query_embedding, article.embedding)
+        # Убеждаемся, что embedding - это список, а не строка JSON
+        article_embedding = article.embedding
+        if isinstance(article_embedding, str):
+            try:
+                article_embedding = json.loads(article_embedding)
+            except (json.JSONDecodeError, TypeError):
+                print(f"Ошибка при десериализации embedding для статьи {article.id}")
+                continue
+        
+        if not isinstance(article_embedding, list):
+            print(f"Embedding для статьи {article.id} не является списком: {type(article_embedding)}")
+            continue
+        
+        similarity = cosine_similarity(query_embedding, article_embedding)
         if similarity >= threshold:
             similarities.append((article, similarity))
     
@@ -256,20 +269,14 @@ def generate_embeddings_for_articles(articles: List[NewsArticle], model: str = "
 
 def semantic_search(query_text: str, search_history_id: int = None, 
                    threshold: float = 0.7, limit: int = 20) -> List[tuple]:
-    """Семантический поиск статей по текстовому запросу"""
+    """Семантический поиск статей по текстовому запросу с гибридным подходом"""
     from models import get_db_session
-    
-    # Генерируем embedding для запроса
-    query_embedding = generate_embedding_with_openai(query_text)
-    if not query_embedding:
-        return []
     
     # Получаем статьи из базы
     session = get_db_session()
     try:
         query = session.query(NewsArticle).filter(
-            NewsArticle.is_duplicate == False,
-            NewsArticle.embedding.isnot(None)
+            NewsArticle.is_duplicate == False
         )
         
         if search_history_id:
@@ -277,15 +284,110 @@ def semantic_search(query_text: str, search_history_id: int = None,
         
         articles = query.all()
         
-        # Ищем похожие статьи
-        results = find_similar_articles(query_embedding, articles, threshold, limit)
+        if not articles:
+            return []
         
-        # Получаем значения атрибутов до закрытия сессии, чтобы избежать проблем
-        # Создаем список кортежей (статья, similarity, данные)
+        # Гибридный поиск: сначала keyword matching для точных совпадений
+        query_lower = query_text.lower().strip()
+        query_words_raw = query_lower.split()
+        
+        # Фильтруем стоп-слова и короткие слова (меньше 2 символов)
+        stop_words = {'в', 'на', 'по', 'с', 'из', 'к', 'от', 'до', 'для', 'о', 'об', 'при', 'за', 'под', 'над', 'про', 'со', 'во', 'то', 'как', 'что', 'это', 'или', 'и', 'а', 'но', 'же', 'ли', 'бы', 'был', 'была', 'было', 'были', 'есть', 'быть', 'был', 'быть'}
+        query_words = [w for w in query_words_raw if len(w) >= 2 and w not in stop_words]
+        total_words = len(query_words)
+        
+        keyword_matches = []
+        keyword_scores = {}
+        
+        for article in articles:
+            title = (str(article.title) if article.title else '').lower()
+            content = (str(article.content) if article.content else '').lower()
+            summary = (str(article.summary) if article.summary else '').lower()
+            
+            # Объединяем текст статьи
+            article_text = f"{title} {content} {summary}"
+            
+            # Подсчитываем количество совпадений слов
+            matches = 0
+            partial_matches = 0
+            
+            for word in query_words:
+                # Точное совпадение
+                if word in article_text:
+                    matches += 1
+                # Частичное совпадение (подстрока)
+                elif any(word in article_word or article_word.startswith(word) for article_word in article_text.split()):
+                    partial_matches += 1
+            
+            # Если найдено хотя бы минимальный процент слов или есть частичные совпадения
+            if total_words > 0:
+                from models import get_setting_float
+                min_match_ratio = get_setting_float('keyword_match_min_ratio', 0.5)
+                
+                match_ratio = matches / total_words
+                # Учитываем частичные совпадения с меньшим весом
+                partial_ratio = partial_matches / total_words * 0.3
+                total_score = match_ratio + partial_ratio
+                
+                # Добавляем статью если найдено хотя бы минимальный процент слов или есть хорошие совпадения
+                if matches >= max(1, int(total_words * min_match_ratio)) or total_score >= 0.4:
+                    keyword_scores[article.id] = total_score
+                    keyword_matches.append((article, total_score))
+        
+        # Сортируем keyword matches по убыванию
+        keyword_matches.sort(key=lambda x: x[1], reverse=True)
+        
+        # Теперь семантический поиск для статей с embeddings
+        # Это основной механизм поиска - он работает по смыслу, а не по точным словам
+        semantic_results = []
+        articles_with_embeddings = [a for a in articles if a.embedding]
+        
+        if articles_with_embeddings:
+            # Генерируем embedding для запроса
+            query_embedding = generate_embedding_with_openai(query_text)
+            
+            if query_embedding:
+                # Адаптивный порог в зависимости от длины запроса (из настроек БД)
+                from models import get_setting_float
+                
+                if len(query_words) == 0:
+                    semantic_threshold = min(threshold, get_setting_float('semantic_threshold_empty', 0.25))
+                elif len(query_words) == 1:
+                    semantic_threshold = min(threshold, get_setting_float('semantic_threshold_1_word', 0.3))
+                elif len(query_words) == 2:
+                    semantic_threshold = min(threshold, get_setting_float('semantic_threshold_2_words', 0.35))
+                elif len(query_words) == 3:
+                    semantic_threshold = min(threshold, get_setting_float('semantic_threshold_3_words', 0.4))
+                elif len(query_words) <= 5:
+                    semantic_threshold = min(threshold, get_setting_float('semantic_threshold_4_5_words', 0.5))
+                else:
+                    semantic_threshold = min(threshold, get_setting_float('semantic_threshold_6_plus_words', 0.6))
+                
+                print(f"Семантический поиск: запрос '{query_text}' ({len(query_words)} значимых слов), порог: {semantic_threshold}")
+                semantic_results = find_similar_articles(query_embedding, articles_with_embeddings, semantic_threshold, limit * 3)
+                print(f"Найдено {len(semantic_results)} статей через семантический поиск")
+        
+        # Объединяем результаты: семантический поиск - основной, keyword matching - дополнительный буст
+        # Это позволяет находить статьи по смыслу, даже если слова не совпадают точно
+        seen_ids = set()
         results_with_data = []
-        for article, similarity in results:
+        
+        # Сначала добавляем все semantic results (основной механизм поиска)
+        for article, similarity in semantic_results:
+            if article.id in seen_ids:
+                continue
+            seen_ids.add(article.id)
+            
+            # Если статья также найдена через keyword matching, увеличиваем similarity
+            if article.id in keyword_scores:
+                keyword_score = keyword_scores[article.id]
+                # Комбинируем semantic similarity и keyword score
+                # Вес буста берется из настроек БД
+                from models import get_setting_float
+                boost_weight = get_setting_float('keyword_boost_weight', 0.1)
+                similarity = min(1.0, similarity + keyword_score * boost_weight)
+            
             try:
-                # Получаем все нужные атрибуты сразу, пока сессия открыта
                 article_data = {
                     'id': article.id,
                     'title': str(article.title) if article.title else '',
@@ -303,6 +405,83 @@ def semantic_search(query_text: str, search_history_id: int = None,
                 print(f"Ошибка при получении данных статьи {article.id}: {e}")
                 continue
         
-        return results_with_data
+        # Затем добавляем keyword matches, которые не попали в semantic results
+        # Это важно для статей без embeddings или с очень низкой semantic similarity
+        for article, match_score in keyword_matches[:limit]:
+            if article.id in seen_ids:
+                continue
+            seen_ids.add(article.id)
+            
+            try:
+                article_data = {
+                    'id': article.id,
+                    'title': str(article.title) if article.title else '',
+                    'content': str(article.content) if article.content else '',
+                    'summary': str(article.summary) if article.summary else '',
+                    'link': str(article.link) if article.link else '',
+                    'source': str(article.source) if article.source else 'Неизвестный источник',
+                    'published_at': article.published_at.isoformat() if article.published_at else None,
+                    'relevance_score': article.relevance_score,
+                    'is_relevant': article.is_relevant,
+                    'classification_reason': str(article.classification_reason) if article.classification_reason else ''
+                }
+                # Для keyword matches: match_score теперь может быть от 0.4 до 1.0+
+                # Если все слова найдены (match_score >= 1.0), это точное совпадение
+                if match_score >= 1.0:
+                    # Точное совпадение всех слов - высокая similarity (0.95-1.0)
+                    # Для однословных запросов используем 0.98-1.0
+                    if total_words == 1:
+                        similarity = 0.98  # Почти 100% для однословных точных совпадений
+                    else:
+                        similarity = 0.95 + min((match_score - 1.0) * 0.05, 0.05)
+                elif match_score >= 0.8:
+                    # Хорошее совпадение (80%+ слов) - высокая similarity
+                    similarity = 0.85 + (match_score - 0.8) * 0.5  # От 0.85 до 0.95
+                elif match_score >= 0.6:
+                    # Среднее совпадение (60%+ слов) - средняя similarity
+                    similarity = 0.70 + (match_score - 0.6) * 0.75  # От 0.70 до 0.85
+                else:
+                    # Частичное совпадение (40-60% слов) - базовая similarity
+                    similarity = 0.50 + (match_score - 0.4) * 1.0  # От 0.50 до 0.70
+                results_with_data.append((article_data, similarity))
+            except Exception as e:
+                print(f"Ошибка при получении данных статьи {article.id}: {e}")
+                continue
+        
+        # Добавляем semantic results, исключая дубликаты
+        for article, similarity in semantic_results:
+            if article.id in seen_ids:
+                continue
+            seen_ids.add(article.id)
+            
+            # Если это keyword match, увеличиваем similarity
+            if article.id in keyword_scores:
+                # Комбинируем keyword score и semantic similarity
+                keyword_score = keyword_scores[article.id]
+                similarity = max(similarity, keyword_score * 0.5 + similarity * 0.5)
+            
+            try:
+                article_data = {
+                    'id': article.id,
+                    'title': str(article.title) if article.title else '',
+                    'content': str(article.content) if article.content else '',
+                    'summary': str(article.summary) if article.summary else '',
+                    'link': str(article.link) if article.link else '',
+                    'source': str(article.source) if article.source else 'Неизвестный источник',
+                    'published_at': article.published_at.isoformat() if article.published_at else None,
+                    'relevance_score': article.relevance_score,
+                    'is_relevant': article.is_relevant,
+                    'classification_reason': str(article.classification_reason) if article.classification_reason else ''
+                }
+                results_with_data.append((article_data, similarity))
+            except Exception as e:
+                print(f"Ошибка при получении данных статьи {article.id}: {e}")
+                continue
+        
+        # Сортируем все результаты по убыванию similarity
+        results_with_data.sort(key=lambda x: x[1], reverse=True)
+        
+        # Возвращаем топ результатов
+        return results_with_data[:limit]
     finally:
         session.close()

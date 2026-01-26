@@ -7,7 +7,7 @@ from datetime import datetime
 from sqlalchemy import func
 from crew import NewsProcessingCrew
 from config import Config
-from models import NewsArticle, SearchHistory, get_db_session, init_db, engine
+from models import NewsArticle, SearchHistory, SystemSettings, get_db_session, init_db, engine, get_all_settings, get_setting, update_setting
 
 app = Flask(__name__)
 app.secret_key = Config.FLASK_SECRET_KEY
@@ -707,6 +707,138 @@ def semantic_search():
         import traceback
         print(f"Ошибка в /api/semantic-search: {traceback.format_exc()}")
         return jsonify({'error': str(e), 'articles': []}), 500
+
+
+@app.route('/api/settings', methods=['GET'])
+def get_settings():
+    """Получение всех системных настроек"""
+    try:
+        category = request.args.get('category')
+        print(f"API /api/settings вызван, category={category}")
+        settings = get_all_settings(category=category)
+        print(f"get_all_settings вернул {len(settings)} настроек")
+        
+        # Отладочная информация
+        print(f"Запрос настроек: category={category}, найдено: {len(settings)}")
+        if settings:
+            print(f"Примеры настроек: {[s.get('key', 'N/A') for s in settings[:3]]}")
+        if len(settings) == 0:
+            print("Предупреждение: настройки не найдены. Проверяем, инициализированы ли они...")
+            # Пытаемся инициализировать, если таблица пустая
+            from models import init_default_settings
+            try:
+                init_default_settings()
+                # Пробуем загрузить снова
+                settings = get_all_settings(category=category)
+                print(f"После инициализации найдено: {len(settings)}")
+            except Exception as init_error:
+                print(f"Ошибка при попытке инициализации: {init_error}")
+        
+        return jsonify({
+            'success': True,
+            'settings': settings,
+            'count': len(settings)
+        })
+    except Exception as e:
+        import traceback
+        error_trace = traceback.format_exc()
+        print(f"Ошибка в /api/settings: {error_trace}")
+        return jsonify({
+            'success': False, 
+            'error': str(e),
+            'traceback': error_trace
+        }), 500
+
+
+@app.route('/api/settings/init', methods=['POST'])
+def init_settings():
+    """Принудительная инициализация настроек по умолчанию"""
+    try:
+        from models import init_default_settings, SystemSettings, get_db_session
+        
+        session = get_db_session()
+        try:
+            # Удаляем все существующие настройки
+            session.query(SystemSettings).delete()
+            session.commit()
+            print("Существующие настройки удалены")
+        except Exception as e:
+            session.rollback()
+            print(f"Ошибка при удалении настроек: {e}")
+        finally:
+            session.close()
+        
+        # Инициализируем заново
+        init_default_settings()
+        
+        # Загружаем созданные настройки
+        settings = get_all_settings()
+        
+        return jsonify({
+            'success': True,
+            'message': f'Инициализировано {len(settings)} настроек по умолчанию',
+            'settings': settings,
+            'count': len(settings)
+        })
+    except Exception as e:
+        import traceback
+        error_trace = traceback.format_exc()
+        print(f"Ошибка в /api/settings/init: {error_trace}")
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'traceback': error_trace
+        }), 500
+
+
+@app.route('/api/settings', methods=['POST'])
+def update_settings():
+    """Обновление системных настроек"""
+    try:
+        data = request.json
+        if not data or 'settings' not in data:
+            return jsonify({'success': False, 'error': 'Не указаны настройки для обновления'}), 400
+        
+        updated = []
+        errors = []
+        
+        for setting_data in data['settings']:
+            key = setting_data.get('key')
+            value = setting_data.get('value')
+            
+            if not key:
+                errors.append('Не указан ключ настройки')
+                continue
+            
+            if value is None:
+                errors.append(f'Не указано значение для настройки {key}')
+                continue
+            
+            description = setting_data.get('description')
+            category = setting_data.get('category', 'general')
+            
+            if update_setting(key, str(value), description, category):
+                updated.append(key)
+            else:
+                errors.append(f'Ошибка при обновлении настройки {key}')
+        
+        if errors:
+            return jsonify({
+                'success': False,
+                'error': 'Ошибки при обновлении настроек',
+                'errors': errors,
+                'updated': updated
+            }), 400
+        
+        return jsonify({
+            'success': True,
+            'message': f'Обновлено настроек: {len(updated)}',
+            'updated': updated
+        })
+    except Exception as e:
+        import traceback
+        print(f"Ошибка в /api/settings POST: {traceback.format_exc()}")
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 
 @app.route('/api/clear-db', methods=['POST'])

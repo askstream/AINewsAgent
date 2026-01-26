@@ -1040,6 +1040,17 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
+    // Загрузка настроек при переключении на вкладку
+    const settingsTab = document.getElementById('settings-tab');
+    if (settingsTab) {
+        settingsTab.addEventListener('shown.bs.tab', function() {
+            // Небольшая задержка, чтобы Bootstrap успел применить классы
+            setTimeout(() => {
+                loadSettings();
+            }, 100);
+        });
+    }
+
     // Удаление записи из истории запросов
     async function deleteHistoryRecord(historyId, event) {
         // Останавливаем всплытие события, чтобы не срабатывал клик по строке
@@ -1576,4 +1587,247 @@ document.addEventListener('DOMContentLoaded', function() {
     // Загрузка новостей и статистики при загрузке страницы
     loadNews();
     loadGeneralStatistics();
+
+    // Загрузка системных настроек
+    async function loadSettings() {
+        const container = document.getElementById('settingsContainer');
+        if (!container) {
+            console.error('settingsContainer не найден!');
+            return;
+        }
+        
+        container.innerHTML = '<div class="text-center"><div class="spinner-border" role="status"><span class="visually-hidden">Загрузка...</span></div></div>';
+        
+        try {
+            const response = await fetch('/api/settings?category=semantic_search');
+            const data = await response.json();
+            
+            if (response.ok && data.success) {
+                if (data.settings && data.settings.length > 0) {
+                    displaySettings(data.settings);
+                } else {
+                    console.log('Настройки semantic_search не найдены, загружаем все настройки...');
+                    // Если настройки не найдены, пробуем загрузить все настройки
+                    const allResponse = await fetch('/api/settings');
+                    const allData = await allResponse.json();
+                    console.log('Все настройки:', allData);
+                    if (allResponse.ok && allData.success && allData.settings && allData.settings.length > 0) {
+                        console.log('Отображаем все настройки:', allData.settings.length);
+                        displaySettings(allData.settings);
+                    } else {
+                        container.innerHTML = '<div class="alert alert-warning">Настройки не найдены в базе данных. Нажмите кнопку "Инициализировать настройки по умолчанию" для создания настроек.</div>';
+                    }
+                }
+            } else {
+                console.error('Ошибка API:', data);
+                container.innerHTML = '<div class="alert alert-danger">Ошибка при загрузке настроек: ' + (data.error || 'Неизвестная ошибка') + '</div>';
+                if (data.traceback) {
+                    console.error('Traceback:', data.traceback);
+                }
+            }
+        } catch (error) {
+            console.error('Ошибка при загрузке настроек:', error);
+            container.innerHTML = '<div class="alert alert-danger">Ошибка: ' + error.message + '</div>';
+        }
+    }
+
+    // Отображение настроек в форме
+    function displaySettings(settings) {
+        const container = document.getElementById('settingsContainer');
+        if (!container) {
+            console.error('Элемент settingsContainer не найден!');
+            return;
+        }
+        
+        console.log('displaySettings вызвана с настройками:', settings);
+        
+        if (!settings || settings.length === 0) {
+            console.warn('Настройки пусты или не переданы');
+            container.innerHTML = '<div class="alert alert-info">Настройки не найдены</div>';
+            return;
+        }
+        
+        let html = '';
+        
+        // Группируем по категориям
+        const categories = {};
+        settings.forEach(setting => {
+            if (!categories[setting.category]) {
+                categories[setting.category] = [];
+            }
+            categories[setting.category].push(setting);
+        });
+        
+        console.log('Категории:', Object.keys(categories));
+        
+        Object.keys(categories).forEach(category => {
+            const categorySettings = categories[category];
+            const categoryName = category === 'semantic_search' ? 'Семантический поиск' : category;
+            
+            html += `<div class="mb-4"><h6 class="border-bottom pb-2">${categoryName}</h6>`;
+            
+            categorySettings.forEach(setting => {
+                const inputId = `setting_${setting.key}`;
+                const description = setting.description || setting.key;
+                const escapedDescription = window.escapeHtml ? window.escapeHtml(description) : description.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                const escapedDescForHidden = window.escapeHtml ? window.escapeHtml(setting.description || '') : (setting.description || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                
+                html += `
+                    <div class="mb-3">
+                        <label for="${inputId}" class="form-label">${escapedDescription}</label>
+                        <input type="number" 
+                               class="form-control" 
+                               id="${inputId}" 
+                               name="${setting.key}"
+                               value="${setting.value}" 
+                               step="0.01" 
+                               min="0" 
+                               max="1"
+                               data-original-value="${setting.value}">
+                        <input type="hidden" name="setting_description_${setting.key}" value="${escapedDescForHidden}">
+                        <input type="hidden" name="setting_category_${setting.key}" value="${setting.category}">
+                        <small class="form-text text-muted">Ключ: ${setting.key}</small>
+                    </div>
+                `;
+            });
+            
+            html += '</div>';
+        });
+        
+        if (html.length === 0) {
+            container.innerHTML = '<div class="alert alert-warning">Настройки получены, но не удалось их отобразить.</div>';
+            return;
+        }
+        
+        // Вставляем HTML
+        try {
+            container.innerHTML = html;
+        } catch (e) {
+            console.error('Ошибка при вставке HTML:', e);
+            container.innerHTML = '<div class="alert alert-danger">Ошибка при отображении настроек: ' + e.message + '</div>';
+            return;
+        }
+    }
+
+    // Сохранение настроек
+    const settingsForm = document.getElementById('settingsForm');
+    if (settingsForm) {
+        settingsForm.addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const form = e.target;
+            const inputs = form.querySelectorAll('input[type="number"]');
+            const settings = [];
+            
+            inputs.forEach(input => {
+                const key = input.name;
+                const value = parseFloat(input.value);
+                const descriptionInput = form.querySelector(`input[name="setting_description_${key}"]`);
+                const categoryInput = form.querySelector(`input[name="setting_category_${key}"]`);
+                
+                if (isNaN(value) || value < 0 || value > 1) {
+                    input.classList.add('is-invalid');
+                    return;
+                }
+                
+                input.classList.remove('is-invalid');
+                
+                settings.push({
+                    key: key,
+                    value: value,
+                    description: descriptionInput ? descriptionInput.value : '',
+                    category: categoryInput ? categoryInput.value : 'semantic_search'
+                });
+            });
+            
+            if (settings.length === 0) {
+                showSettingsAlert('Нет настроек для сохранения', 'danger');
+                return;
+            }
+            
+            const submitBtn = form.querySelector('button[type="submit"]');
+            const originalText = submitBtn.innerHTML;
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status"></span> Сохранение...';
+            
+            try {
+                const response = await fetch('/api/settings', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ settings: settings })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok && data.success) {
+                    showSettingsAlert('Настройки успешно сохранены', 'success');
+                    // Обновляем original-value для всех полей
+                    inputs.forEach(input => {
+                        input.setAttribute('data-original-value', input.value);
+                    });
+                } else {
+                    showSettingsAlert('Ошибка при сохранении: ' + (data.error || 'Неизвестная ошибка'), 'danger');
+                }
+            } catch (error) {
+                showSettingsAlert('Ошибка: ' + error.message, 'danger');
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = originalText;
+            }
+        });
+    }
+
+    // Показ сообщения в alert
+    function showSettingsAlert(message, type) {
+        const alert = document.getElementById('settingsAlert');
+        if (!alert) return;
+        
+        alert.className = `alert alert-${type}`;
+        alert.textContent = message;
+        alert.style.display = 'block';
+        
+        setTimeout(() => {
+            alert.style.display = 'none';
+        }, 5000);
+    }
+    
+    // Инициализация настроек по умолчанию
+    async function initDefaultSettings() {
+        if (!confirm('Вы уверены, что хотите инициализировать настройки по умолчанию? Все текущие настройки будут удалены и заменены значениями по умолчанию.')) {
+            return;
+        }
+        
+        const container = document.getElementById('settingsContainer');
+        container.innerHTML = '<div class="text-center"><div class="spinner-border" role="status"><span class="visually-hidden">Инициализация...</span></div></div>';
+        
+        try {
+            const response = await fetch('/api/settings/init', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            });
+            
+            const data = await response.json();
+            
+            if (response.ok && data.success) {
+                showSettingsAlert('Настройки успешно инициализированы: ' + data.message, 'success');
+                // Загружаем настройки заново
+                await loadSettings();
+            } else {
+                showSettingsAlert('Ошибка при инициализации: ' + (data.error || 'Неизвестная ошибка'), 'danger');
+                if (data.traceback) {
+                    console.error('Traceback:', data.traceback);
+                }
+            }
+        } catch (error) {
+            console.error('Ошибка при инициализации настроек:', error);
+            showSettingsAlert('Ошибка: ' + error.message, 'danger');
+        }
+    }
+    
+    window.loadSettings = loadSettings;
+    window.initDefaultSettings = initDefaultSettings;
 });
